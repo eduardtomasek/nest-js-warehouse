@@ -4,6 +4,14 @@
   "description": "In-memory warehouse registry for NestJS applications",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eduardtomasek/nest-js-warehouse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/eduardtomasek/nest-js-warehouse/issues"
+  },
+  "homepage": "https://github.com/eduardtomasek/nest-js-warehouse#readme",
   "files": [
     "dist",
     "README.md",
