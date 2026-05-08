@@ -2,6 +2,10 @@
 
 ## Project Skills
 
+Use Serena as the primary tool for code navigation, symbol lookup, and symbol-aware edits in this repository.
+
+If Serena is unavailable or not suitable for the task, fall back to standard approaches such as `rg`, direct file reads, and shell-based verification.
+
 Before broad codebase exploration in this project, load and follow the local GrepAI-first skill:
 
 - `.codex/skills/grepai-first/SKILL.md`
