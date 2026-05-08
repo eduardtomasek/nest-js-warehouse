@@ -20,6 +20,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "jest",
+    "publish:npm": "bash scripts/publish-npm.sh",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
