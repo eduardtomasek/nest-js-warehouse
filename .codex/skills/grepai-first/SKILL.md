@@ -1,13 +1,13 @@
 ---
 name: grepai-first
-description: Prefer GrepAI MCP for codebase discovery in this project, with explicit fallback behavior when GrepAI, MCP, Ollama, or indexes are unavailable. Use when exploring, explaining, debugging, reviewing, refactoring, or implementing changes in the nest-js-warehouse project.
+description: Prefer GrepAI semantic search for codebase discovery in this project, with explicit fallback behavior when GrepAI, MCP, Ollama, or the index is unavailable. Use when exploring, explaining, debugging, reviewing, refactoring, or implementing changes in the nest-js-warehouse project.
 ---
 
 # GrepAI First
 
 ## Purpose
 
-For this project, try GrepAI before broad manual code exploration whenever the task needs codebase understanding. GrepAI is the preferred first pass for semantic search, RPG graph navigation, and symbol relationship discovery.
+For this project, use GrepAI semantic search before broad manual code exploration whenever the task needs codebase understanding. GrepAI semantic search is the preferred first pass for finding relevant files and code by intent.
 
 Do not use GrepAI for trivial single-file edits where the target file and line are already known.
 
@@ -23,26 +23,20 @@ Do not use GrepAI for trivial single-file edits where the target file and line a
 
 1. Check index health if freshness matters:
    - `grepai_index_status`
-   - Continue if `total_chunks > 0`, `symbols_ready: true`, and RPG is available when graph traversal is useful.
+   - Continue if `total_chunks > 0`.
 2. Use semantic search for intent:
    - `grepai_search` with a natural-language query.
    - Search for domain behavior, not only exact identifiers.
-3. Use RPG for structure:
-   - `grepai_rpg_search` to find files, symbols, chunks, and feature paths.
-   - `grepai_rpg_fetch` for a promising node.
-   - `grepai_rpg_explore` when relationships matter.
-4. Use trace tools for call relationships:
-   - `grepai_trace_callers`, `grepai_trace_callees`, or `grepai_trace_graph`.
-   - Prefer method/function names over class names when class-level traces return empty results.
-5. Confirm important findings with direct file reads before editing.
+3. Confirm important findings with direct file reads before editing.
+
+Do NOT use RPG tools (`grepai_rpg_search`, `grepai_rpg_fetch`, `grepai_rpg_explore`) or trace tools (`grepai_trace_callers`, `grepai_trace_callees`, `grepai_trace_graph`).
 
 ## If GrepAI Works But Results Are Weak
 
 - Rephrase the query using project terms from the result set.
-- Try both semantic search and RPG search; they answer different questions.
+- Run a second `grepai_search` with a different angle on the same intent.
 - Search by exact symbol with `rg` if semantic results are low-confidence.
 - Read the top files directly before drawing conclusions.
-- Treat empty class-level callees as inconclusive; retry with concrete method/function symbols.
 
 ## Failure Handling
 
@@ -59,7 +53,6 @@ Fallback tools:
 
 - `rg` / `rg --files` for exact search and file discovery.
 - Direct file reads with `sed -n` or similar.
-- Tree-sitter tools for syntax-level inspection when useful.
 - TypeScript/Jest/NestJS commands already present in the repo for verification.
 
 ### Local Ollama Unavailable
@@ -67,28 +60,17 @@ Fallback tools:
 Symptoms include connection failures to `127.0.0.1:11434` or `localhost:11434`, missing model errors, or sandbox `operation not permitted` when GrepAI CLI contacts Ollama.
 
 1. If the task only needs existing index reads, continue with MCP if it still answers.
-2. If indexing or `grepai watch` is required and the first sandboxed command fails with a local network error, rerun with escalated permissions.
-3. If Ollama is actually not running or the model is missing, do not repeatedly retry.
-4. Fall back to `rg` and direct file reads.
-5. Report the specific blocked dependency: Ollama endpoint, model, or sandbox permission.
+2. If Ollama is actually not running or the model is missing, do not repeatedly retry.
+3. Fall back to `rg` and direct file reads.
+4. Report the specific blocked dependency: Ollama endpoint, model, or sandbox permission.
 
 ### Empty Or Stale Index
 
-If status shows `total_chunks: 0`, `symbols_ready: false`, or RPG disabled/stale:
+If status shows `total_chunks: 0`:
 
 1. If the user asked to initialize or refresh GrepAI, run `grepai watch` or `grepai watch --background` as appropriate.
-2. If `grepai watch` needs local Ollama and fails due to sandbox networking, request escalation.
-3. If the task is unrelated to maintaining GrepAI, fall back to `rg` and file reads rather than stopping.
-4. Mention that GrepAI was skipped because the index was empty or stale.
-
-### Partial RPG Availability
-
-If semantic search works but RPG is disabled or empty:
-
-- Use semantic search for candidate files.
-- Use `rg` for exact symbols and imports.
-- Use direct reads to reconstruct relationships.
-- Use trace tools only if `symbols_ready: true`.
+2. If the task is unrelated to maintaining GrepAI, fall back to `rg` and file reads rather than stopping.
+3. Mention that GrepAI was skipped because the index was empty or stale.
 
 ## Fallback Search Pattern
 
