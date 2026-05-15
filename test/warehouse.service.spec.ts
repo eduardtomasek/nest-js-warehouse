@@ -36,6 +36,18 @@ describe('WarehouseService', () => {
     expect(service.get('country')).toBe(value);
   });
 
+  it('keeps readiness semantics unchanged for namespaced reads', () => {
+    service.set('countries', { code: 'ZA' }, { freeze: false, ns: 'africa' });
+
+    expect(() => service.get('countries', { ns: 'africa' })).toThrow(
+      'Warehouse is not initialized yet.',
+    );
+    expect(service.tryGet('countries', { ns: 'africa' })).toEqual({
+      code: 'ZA',
+    });
+    expect(service.has('countries', { ns: 'africa' })).toBe(true);
+  });
+
   it('freezes values set manually by default', () => {
     const value = { code: 'CZ' };
 
@@ -72,6 +84,30 @@ describe('WarehouseService', () => {
     expect(service.tryGet('missing')).toBeUndefined();
   });
 
+  it('stores root and namespaced values independently for the same key', () => {
+    service.set('countries', { code: 'CZ' }, { freeze: false });
+    service.set('countries', { code: 'ZA' }, { freeze: false, ns: 'africa' });
+    service.markReady();
+
+    expect(service.get('countries')).toEqual({ code: 'CZ' });
+    expect(service.get('countries', { ns: 'africa' })).toEqual({ code: 'ZA' });
+  });
+
+  it('uses namespace-aware lookups for tryGet and has', () => {
+    service.set('countries', { code: 'CZ' }, { freeze: false });
+
+    expect(service.tryGet('countries', { ns: 'africa' })).toBeUndefined();
+    expect(service.has('countries', { ns: 'africa' })).toBe(false);
+
+    service.set('countries', { code: 'ZA' }, { freeze: false, ns: 'africa' });
+
+    expect(service.tryGet('countries', { ns: 'africa' })).toEqual({
+      code: 'ZA',
+    });
+    expect(service.has('countries', { ns: 'africa' })).toBe(true);
+    expect(service.tryGet('countries')).toEqual({ code: 'CZ' });
+  });
+
   it('refreshes a key from its registered loader', async () => {
     loaderRegistry.register('countries', () => ['CZ']);
 
@@ -99,11 +135,36 @@ describe('WarehouseService', () => {
     );
   });
 
+  it('rejects namespaced refresh explicitly', async () => {
+    await expect(
+      service.refresh('countries', { ns: 'africa' }),
+    ).rejects.toThrow(
+      'Namespaced refresh is not supported without namespaced loader registration: africa',
+    );
+  });
+
   it('throws from get when key does not exist', () => {
     service.markReady();
 
     expect(() => service.get('missing')).toThrow(
       'Warehouse item not found: missing',
+    );
+  });
+
+  it('throws a namespace-aware error when a namespaced key does not exist', () => {
+    service.markReady();
+
+    expect(() => service.get('missing', { ns: 'africa' })).toThrow(
+      'Warehouse item not found in namespace "africa": missing',
+    );
+  });
+
+  it('rejects empty and whitespace-only namespace values', () => {
+    expect(() =>
+      service.set('countries', [], { freeze: false, ns: '' }),
+    ).toThrow('Warehouse namespace must be a non-empty string.');
+    expect(() => service.keys({ ns: '   ' })).toThrow(
+      'Warehouse namespace must be a non-empty string.',
     );
   });
 
@@ -123,6 +184,60 @@ describe('WarehouseService', () => {
     expect(service.keys()).toEqual(['countries', symbolKey]);
   });
 
+  it('rejects namespaced symbol keys while preserving root symbol keys', () => {
+    const symbolKey = Symbol('registry');
+
+    service.set(symbolKey, { code: 'CZ' }, { freeze: false });
+
+    expect(service.tryGet(symbolKey)).toEqual({ code: 'CZ' });
+    expect(() =>
+      service.set(symbolKey, { code: 'ZA' }, { freeze: false, ns: 'africa' }),
+    ).toThrow(
+      'Namespaced symbol keys are not supported in the first version: Symbol(registry)',
+    );
+  });
+
+  it('returns only root keys when keys is called without namespace', () => {
+    service.set('countries', []);
+    service.set('cities', [], { ns: 'africa' });
+
+    expect(service.keys()).toEqual(['countries']);
+  });
+
+  it('returns only keys from the selected namespace', () => {
+    service.set('countries', []);
+    service.set('cities', [], { ns: 'africa' });
+    service.set('rivers', [], { ns: 'africa' });
+    service.set('states', [], { ns: 'america' });
+
+    expect(service.keys({ ns: 'africa' })).toEqual(['cities', 'rivers']);
+  });
+
+  it('clears only the selected namespace', () => {
+    service.set('countries', [], { freeze: false });
+    service.set('cities', [], { freeze: false, ns: 'africa' });
+    service.set('rivers', [], { freeze: false, ns: 'africa' });
+    service.set('states', [], { freeze: false, ns: 'america' });
+
+    service.clear({ ns: 'africa' });
+
+    expect(service.tryGet('countries')).toEqual([]);
+    expect(service.tryGet('cities', { ns: 'africa' })).toBeUndefined();
+    expect(service.tryGet('rivers', { ns: 'africa' })).toBeUndefined();
+    expect(service.tryGet('states', { ns: 'america' })).toEqual([]);
+  });
+
+  it('keeps readiness and behaves predictably for missing namespaces', () => {
+    service.set('countries', [], { freeze: false });
+    service.markReady();
+
+    service.clear({ ns: 'missing' });
+
+    expect(service.isReady()).toBe(true);
+    expect(service.keys({ ns: 'missing' })).toEqual([]);
+    expect(service.tryGet('countries')).toEqual([]);
+  });
+
   it('clears the store and resets readiness', () => {
     service.set('countries', []);
     service.markReady();
@@ -131,5 +246,28 @@ describe('WarehouseService', () => {
 
     expect(service.isReady()).toBe(false);
     expect(service.has('countries')).toBe(false);
+  });
+
+  it('keeps root behavior compatible after namespaced writes and clears', () => {
+    service.set('countries', ['CZ'], { freeze: false });
+    service.set('countries', ['ZA'], { freeze: false, ns: 'africa' });
+    service.set('cities', ['Prague'], { freeze: false, ns: 'europe' });
+    service.markReady();
+
+    expect(service.get('countries')).toEqual(['CZ']);
+    expect(service.has('countries')).toBe(true);
+    expect(service.keys()).toEqual(['countries']);
+
+    service.clear({ ns: 'africa' });
+
+    expect(service.get('countries')).toEqual(['CZ']);
+    expect(service.has('countries')).toBe(true);
+    expect(service.isReady()).toBe(true);
+
+    service.clear();
+
+    expect(service.isReady()).toBe(false);
+    expect(service.has('countries')).toBe(false);
+    expect(service.keys()).toEqual([]);
   });
 });

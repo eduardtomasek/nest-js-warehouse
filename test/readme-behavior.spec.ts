@@ -28,4 +28,13 @@ describe('README behavior documentation', () => {
     expect(readme).toContain('distributed cache');
     expect(readme).toContain('Deep freeze');
   });
+
+  it('documents namespace behavior and first-version namespace limits', () => {
+    expect(readme).toContain('root namespace');
+    expect(readme).toContain("ns: 'chapter1'");
+    expect(readme).toContain('Namespaced refresh is not supported');
+    expect(readme).toContain('Namespaced symbol keys are not supported');
+    expect(readme).toContain('`keys()` without `ns` returns only root keys');
+    expect(readme).toContain('`clear({ ns })` removes only that namespace');
+  });
 });

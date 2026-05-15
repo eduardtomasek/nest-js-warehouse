@@ -1,5 +1,4 @@
 import * as publicSurface from '../src';
-
 describe('public package surface', () => {
   it('exports the intended user-facing modules', () => {
     expect(publicSurface.WarehouseModule).toBeDefined();

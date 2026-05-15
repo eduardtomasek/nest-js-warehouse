@@ -21,7 +21,7 @@ Use it for exploring, explaining, debugging, reviewing, refactoring, or implemen
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **nest-js-warehouse** (202 symbols, 459 relationships, 3 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **nest-js-warehouse** (213 symbols, 469 relationships, 3 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -59,5 +59,7 @@ This project is indexed by GitNexus as **nest-js-warehouse** (202 symbols, 459 r
 | Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+| Work in the Internal area (14 symbols) | `.claude/skills/generated/internal/SKILL.md` |
+| Work in the Test area (12 symbols) | `.claude/skills/generated/test/SKILL.md` |
 
 <!-- gitnexus:end -->

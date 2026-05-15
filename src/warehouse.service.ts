@@ -6,6 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { WAREHOUSE_OPTIONS } from './constants/warehouse.constants';
 import type { WarehouseModuleOptions } from './interfaces/warehouse-module-options.interface';
+import type { WarehouseNamespaceOptions } from './interfaces/warehouse-namespace-options.interface';
 import type { WarehouseSetOptions } from './interfaces/warehouse-set-options.interface';
 import { WarehouseFreezePolicy } from './internal/warehouse-freeze-policy';
 import { WarehouseLoaderRegistry } from './internal/warehouse-loader.registry';
@@ -16,6 +17,7 @@ import {
 
 @Injectable()
 export class WarehouseService {
+  private static readonly NAMESPACE_KEY_PREFIX = '__ns__:';
   private readonly store = new Map<string | symbol, unknown>();
   private ready = false;
   private readonly resolvedOptions: ResolvedWarehouseModuleOptions;
@@ -35,6 +37,91 @@ export class WarehouseService {
     this.freezePolicy = new WarehouseFreezePolicy(this.resolvedOptions);
   }
 
+  private resolveStoreKey(
+    key: string | symbol,
+    options?: WarehouseNamespaceOptions,
+  ): string | symbol {
+    const namespace = this.getValidatedNamespace(options);
+
+    if (!namespace) {
+      return key;
+    }
+
+    if (typeof key === 'symbol') {
+      throw new Error(
+        `Namespaced symbol keys are not supported in the first version: ${String(key)}`,
+      );
+    }
+
+    return `${WarehouseService.NAMESPACE_KEY_PREFIX}${namespace}:${String(key)}`;
+  }
+
+  private parseNamespacedStoreKey(
+    storeKey: string | symbol,
+  ): WarehouseNamespaceOptions & { key: string | symbol } | null {
+    if (
+      typeof storeKey !== 'string' ||
+      !storeKey.startsWith(WarehouseService.NAMESPACE_KEY_PREFIX)
+    ) {
+      return null;
+    }
+
+    const withoutPrefix = storeKey.slice(
+      WarehouseService.NAMESPACE_KEY_PREFIX.length,
+    );
+    const separatorIndex = withoutPrefix.indexOf(':');
+
+    if (separatorIndex === -1) {
+      return null;
+    }
+
+    return {
+      ns: withoutPrefix.slice(0, separatorIndex),
+      key: withoutPrefix.slice(separatorIndex + 1),
+    };
+  }
+
+  private ensureRefreshSupported(options?: WarehouseNamespaceOptions): void {
+    const namespace = this.getValidatedNamespace(options);
+
+    if (namespace) {
+      throw new Error(
+        `Namespaced refresh is not supported without namespaced loader registration: ${namespace}`,
+      );
+    }
+  }
+
+  private createMissingKeyError(
+    key: string | symbol,
+    options?: WarehouseNamespaceOptions,
+  ): Error {
+    const namespace = this.getValidatedNamespace(options);
+
+    if (namespace) {
+      return new Error(
+        `Warehouse item not found in namespace "${namespace}": ${String(key)}`,
+      );
+    }
+
+    return new Error(`Warehouse item not found: ${String(key)}`);
+  }
+
+  private getValidatedNamespace(
+    options?: WarehouseNamespaceOptions,
+  ): string | undefined {
+    const namespace = options?.ns;
+
+    if (namespace === undefined) {
+      return undefined;
+    }
+
+    if (namespace.trim().length === 0) {
+      throw new Error('Warehouse namespace must be a non-empty string.');
+    }
+
+    return namespace;
+  }
+
   /**
    * Writes a value into the warehouse under one key.
    * This is the manual write path; loader-managed writes also pass through it.
@@ -45,7 +132,10 @@ export class WarehouseService {
     value: T,
     options: WarehouseSetOptions = {},
   ): void {
-    this.store.set(key, this.freezePolicy.apply(value, options));
+    this.store.set(
+      this.resolveStoreKey(key, options),
+      this.freezePolicy.apply(value, options),
+    );
   }
 
   /**
@@ -53,16 +143,18 @@ export class WarehouseService {
    * It protects callers from reading before bootstrap has completed.
    * Missing keys are treated as configuration or loader errors.
    */
-  get<T>(key: string | symbol): T {
+  get<T>(key: string | symbol, options?: WarehouseNamespaceOptions): T {
+    const storeKey = this.resolveStoreKey(key, options);
+
     if (!this.ready) {
       throw new Error('Warehouse is not initialized yet.');
     }
 
-    if (!this.store.has(key)) {
-      throw new Error(`Warehouse item not found: ${String(key)}`);
+    if (!this.store.has(storeKey)) {
+      throw this.createMissingKeyError(key, options);
     }
 
-    return this.store.get(key) as T;
+    return this.store.get(storeKey) as T;
   }
 
   /**
@@ -70,8 +162,11 @@ export class WarehouseService {
    * This is useful for optional registry entries or manual checks.
    * It does not enforce readiness because callers choose the safe path explicitly.
    */
-  tryGet<T>(key: string | symbol): T | undefined {
-    return this.store.get(key) as T | undefined;
+  tryGet<T>(
+    key: string | symbol,
+    options?: WarehouseNamespaceOptions,
+  ): T | undefined {
+    return this.store.get(this.resolveStoreKey(key, options)) as T | undefined;
   }
 
   /**
@@ -79,7 +174,12 @@ export class WarehouseService {
    * The loader lifecycle registry executes the loader and commits only on success.
    * The committed value goes through set(), so freeze behavior stays consistent.
    */
-  async refresh<T>(key: string | symbol): Promise<T> {
+  async refresh<T>(
+    key: string | symbol,
+    options?: WarehouseNamespaceOptions,
+  ): Promise<T> {
+    this.ensureRefreshSupported(options);
+
     return this.loaderRegistry.load<T>(key, (value) => {
       this.set(key, value);
     });
@@ -90,8 +190,8 @@ export class WarehouseService {
    * This is a lightweight lookup used by callers that want to branch explicitly.
    * It reports store contents only; it does not check whether a loader exists.
    */
-  has(key: string | symbol): boolean {
-    return this.store.has(key);
+  has(key: string | symbol, options?: WarehouseNamespaceOptions): boolean {
+    return this.store.has(this.resolveStoreKey(key, options));
   }
 
   /**
@@ -99,8 +199,22 @@ export class WarehouseService {
    * This helps callers inspect loaded or manually inserted entries.
    * The returned array is a snapshot, not a live view of the store.
    */
-  keys(): Array<string | symbol> {
-    return Array.from(this.store.keys());
+  keys(options?: WarehouseNamespaceOptions): Array<string | symbol> {
+    const namespace = this.getValidatedNamespace(options);
+
+    return Array.from(this.store.keys()).flatMap((storeKey) => {
+      const parsedKey = this.parseNamespacedStoreKey(storeKey);
+
+      if (!namespace) {
+        return parsedKey ? [] : [storeKey];
+      }
+
+      if (parsedKey?.ns === namespace) {
+        return [parsedKey.key];
+      }
+
+      return [];
+    });
   }
 
   /**
@@ -126,8 +240,22 @@ export class WarehouseService {
    * This is mainly useful for tests or explicit reinitialization flows.
    * It does not remove registered loaders from the lifecycle registry.
    */
-  clear(): void {
-    this.store.clear();
-    this.ready = false;
+  clear(_options?: WarehouseNamespaceOptions): void {
+    const namespace = this.getValidatedNamespace(_options);
+
+    if (!namespace) {
+      this.store.clear();
+      this.ready = false;
+
+      return;
+    }
+
+    for (const storeKey of this.store.keys()) {
+      const parsedKey = this.parseNamespacedStoreKey(storeKey);
+
+      if (parsedKey?.ns === namespace) {
+        this.store.delete(storeKey);
+      }
+    }
   }
 }

@@ -126,6 +126,19 @@ export class SomeService {
 
 `get()` throws if the warehouse is not ready or the key is missing. Use `tryGet()` when a missing key should return `undefined`.
 
+When `ns` is omitted, warehouse reads and writes use the root namespace.
+
+Use namespace-aware addressing when the same logical key should exist in more than one scope:
+
+```ts
+const rootDraft = warehouse.get<string[]>("draft");
+const chapterDraft = warehouse.get<string[]>("draft", { ns: 'chapter1' });
+```
+
+`keys()` without `ns` returns only root keys, and `keys({ ns })` returns only keys from that namespace.
+
+`clear({ ns })` removes only that namespace. Global `clear()` still resets the whole warehouse and readiness state.
+
 To reload one item with its original loader:
 
 ```ts
@@ -139,6 +152,8 @@ If no loader was registered for the key, `refresh()` throws:
 ```txt
 Warehouse loader not found: <key>
 ```
+
+Namespaced refresh is not supported in the first version because loader registration remains root-only.
 
 ## Error handling
 
@@ -155,11 +170,15 @@ Manual writes through `set()` use the global `freezeValues` default, but each ca
 ```ts
 warehouse.set("draft", [], { freeze: false });
 warehouse.set("final", ["CZ", "US"], { freeze: true });
+warehouse.set("draft", [], { freeze: false, ns: 'chapter1' });
+warehouse.set("final", ["CZ", "US"], { freeze: true, ns: 'chapter1' });
 ```
 
 Frozen objects cannot be unfrozen. There is no unlock operation. To change a frozen value, create a replacement value and store it again with the same key.
 
 `Map`, `Set`, `Date`, primitive values, and `null` are returned unchanged. Deep freeze is intentionally not implemented in the first version.
+
+Namespaced symbol keys are not supported in the first version. Root symbol keys remain supported.
 
 ## Best practices
 
@@ -196,8 +215,15 @@ interface WarehouseModuleAsyncOptions {
 ```
 
 ```ts
+interface WarehouseNamespaceOptions {
+  ns?: string;
+}
+```
+
+```ts
 interface WarehouseSetOptions {
   freeze?: boolean;
+  ns?: string;
 }
 ```
 
@@ -207,14 +233,28 @@ WarehouseService.set<T>(
   value: T,
   options?: WarehouseSetOptions,
 ): void
-WarehouseService.get<T>(key: string | symbol): T
-WarehouseService.tryGet<T>(key: string | symbol): T | undefined
-WarehouseService.refresh<T>(key: string | symbol): Promise<T>
-WarehouseService.has(key: string | symbol): boolean
-WarehouseService.keys(): Array<string | symbol>
+WarehouseService.get<T>(
+  key: string | symbol,
+  options?: WarehouseNamespaceOptions,
+): T
+WarehouseService.tryGet<T>(
+  key: string | symbol,
+  options?: WarehouseNamespaceOptions,
+): T | undefined
+WarehouseService.refresh<T>(
+  key: string | symbol,
+  options?: WarehouseNamespaceOptions,
+): Promise<T>
+WarehouseService.has(
+  key: string | symbol,
+  options?: WarehouseNamespaceOptions,
+): boolean
+WarehouseService.keys(
+  options?: WarehouseNamespaceOptions,
+): Array<string | symbol>
 WarehouseService.isReady(): boolean
 WarehouseService.markReady(): void
-WarehouseService.clear(): void
+WarehouseService.clear(options?: WarehouseNamespaceOptions): void
 ```
 
 ```ts
